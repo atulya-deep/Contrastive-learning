@@ -46,3 +46,31 @@ projection_units = 128
 num_epochs = 50
 dropout_rate = 0.5
 temperature = 0.05
+
+def create_classifier(encoder, trainable=True):
+
+    for layer in encoder.layers:
+        layer.trainable = trainable
+
+    inputs = keras.Input(shape=input_shape)
+    features = encoder(inputs)
+    features = layers.Dropout(dropout_rate)(features)
+    features = layers.Dense(hidden_units, activation="relu")(features)
+    features = layers.Dropout(dropout_rate)(features)
+    outputs = layers.Dense(num_classes, activation="softmax")(features)
+
+    model = keras.Model(inputs=inputs, outputs=outputs, name="cifar10-classifier")
+    model.compile(
+        optimizer=keras.optimizers.Adam(learning_rate),
+        loss=keras.losses.SparseCategoricalCrossentropy(),
+        metrics=[keras.metrics.SparseCategoricalAccuracy()],
+    )
+    return model
+encoder = create_encoder()
+classifier = create_classifier(encoder)
+classifier.summary()
+
+history = classifier.fit(x=x_train, y=y_train, batch_size=batch_size, epochs=num_epochs)
+
+accuracy = classifier.evaluate(x_test, y_test)[1]
+print(f"Test accuracy: {round(accuracy * 100, 2)}%")
