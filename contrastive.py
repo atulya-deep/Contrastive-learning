@@ -66,11 +66,43 @@ def create_classifier(encoder, trainable=True):
         metrics=[keras.metrics.SparseCategoricalAccuracy()],
     )
     return model
-encoder = create_encoder()
-classifier = create_classifier(encoder)
-classifier.summary()
+class SupervisedContrastiveLoss(keras.losses.Loss):
+    def __init__(self, temperature=1, name=None):
+        super(SupervisedContrastiveLoss, self).__init__(name=name)
+        self.temperature = temperature
 
-history = classifier.fit(x=x_train, y=y_train, batch_size=batch_size, epochs=num_epochs)
+    def __call__(self, labels, feature_vectors, sample_weight=None):
+        # Normalize feature vectors
+        feature_vectors_normalized = tf.math.l2_normalize(feature_vectors, axis=1)
+        # Compute logits
+        logits = tf.divide(
+            tf.matmul(
+                feature_vectors_normalized, tf.transpose(feature_vectors_normalized)
+            ),
+            self.temperature,
+        )
+        return tfa.losses.npairs_loss(tf.squeeze(labels), logits)
+    def add_projection_head(encoder):
+    inputs = keras.Input(shape=input_shape)
+    features = encoder(inputs)
+    outputs = layers.Dense(projection_units, activation="relu")(features)
+    model = keras.Model(
+        inputs=inputs, outputs=outputs, name="cifar-encoder_with_projection-head"
+    )
+    return model
+encoder = create_encoder()
+
+encoder_with_projection_head = add_projection_head(encoder)
+encoder_with_projection_head.compile(
+    optimizer=keras.optimizers.Adam(learning_rate),
+    loss=SupervisedContrastiveLoss(temperature),
+)
+
+encoder_with_projection_head.summary()
+
+history = encoder_with_projection_head.fit(
+    x=x_train, y=y_train, batch_size=batch_size, epochs=num_epochs
+)
 
 accuracy = classifier.evaluate(x_test, y_test)[1]
 print(f"Test accuracy: {round(accuracy * 100, 2)}%")
